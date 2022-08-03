@@ -35,6 +35,11 @@ contract Gen30 is
 
     uint public memberLimit = 89;
     uint public followerLimit = 244;
+    uint public nonOwnerLimit = 400;
+
+    bool public isMemberLimit = true;
+    bool public isFollowerLimit = true;
+    bool public isOwnerLimit = true;
 
     uint public memberMintedCount;
     uint public followerMintedCount;
@@ -84,6 +89,30 @@ contract Gen30 is
         rootMembers = _rootMembers;
     }
 
+    function setMemberLimit(bool _isOwnerLimit, uint _memberLimit)
+        external
+        onlyOwner
+    {
+        isMemberLimit = _isOwnerLimit;
+        memberLimit = _memberLimit;
+    }
+
+    function setOwnerLimit(bool _isOwnerLimit, uint _nonOwnerLimit)
+        external
+        onlyOwner
+    {
+        isOwnerLimit = _isOwnerLimit;
+        nonOwnerLimit = _nonOwnerLimit;
+    }
+
+    function setFollowLimit(bool _isFollowerLimit, uint _followerLimit)
+        external
+        onlyOwner
+    {
+        isFollowerLimit = _isFollowerLimit;
+        followerLimit = _followerLimit;
+    }
+
     function _baseURI() internal view virtual override returns (string memory) {
         return _baseTokenURI;
     }
@@ -100,54 +129,66 @@ contract Gen30 is
         external
         payable
     {
-        require(mintable, "Mint hasn't started yet");
-        if (inPreSale) {
-            bytes32 leaf = bytes32(uint256(uint160(msg.sender)));
-            require(
-                _tokenIds.length == 1,
-                "Only 1 NFT can be minted during presale"
-            );
-            // console.log(
-            //     "Is member",
-            //     MerkleProof.verify(_merkleProof, rootMembers, leaf)
-            // );
-            // console.log(
-            //     "Is follower",
-            //     MerkleProof.verify(_merkleProof, rootFollowers, leaf)
-            // );
-            require(
-                MerkleProof.verify(_merkleProof, rootMembers, leaf) ||
-                    MerkleProof.verify(_merkleProof, rootFollowers, leaf),
-                "You don't have whitelist"
-            );
-            if (MerkleProof.verify(_merkleProof, rootMembers, leaf)) {
-                // console.log("MEMBER");
-                require(!memberMint[msg.sender], "Already minted as a member");
-                require(
-                    memberMintedCount < memberLimit,
-                    "All member NFTs are sold"
-                );
-                memberMintedCount++;
-                memberMint[msg.sender] = true;
-            } else if (MerkleProof.verify(_merkleProof, rootFollowers, leaf)) {
-                require(
-                    !followerMint[msg.sender],
-                    "Already minted as a follower"
-                );
-                require(
-                    followerMintedCount < followerLimit,
-                    "All follower NFTs are sold"
-                );
-                followerMintedCount++;
-                followerMint[msg.sender] = true;
-            }
-        }
-        require(_tokenIds.length > 0, "Amount cannot be zero");
         if (msg.sender != owner()) {
-            require(
-                (totalMinted + _tokenIds.length) < 400,
-                "Only 400 tokens can be minted by users"
-            );
+            require(mintable, "Mint hasn't started yet");
+            if (inPreSale) {
+                bytes32 leaf = bytes32(uint256(uint160(msg.sender)));
+                require(
+                    _tokenIds.length == 1,
+                    "Only 1 NFT can be minted during presale"
+                );
+                // console.log(
+                //     "Is member",
+                //     MerkleProof.verify(_merkleProof, rootMembers, leaf)
+                // );
+                // console.log(
+                //     "Is follower",
+                //     MerkleProof.verify(_merkleProof, rootFollowers, leaf)
+                // );
+                require(
+                    MerkleProof.verify(_merkleProof, rootMembers, leaf) ||
+                        MerkleProof.verify(_merkleProof, rootFollowers, leaf),
+                    "You don't have whitelist"
+                );
+                if (MerkleProof.verify(_merkleProof, rootMembers, leaf)) {
+                    // console.log("MEMBER");
+                    require(
+                        !memberMint[msg.sender],
+                        "Already minted as a member"
+                    );
+                    if (isMemberLimit) {
+                        require(
+                            memberMintedCount < memberLimit,
+                            "All member NFTs are sold"
+                        );
+                    }
+                    memberMintedCount++;
+                    memberMint[msg.sender] = true;
+                } else if (
+                    MerkleProof.verify(_merkleProof, rootFollowers, leaf)
+                ) {
+                    require(
+                        !followerMint[msg.sender],
+                        "Already minted as a follower"
+                    );
+                    if (isFollowerLimit) {
+                        require(
+                            followerMintedCount < followerLimit,
+                            "All follower NFTs are sold"
+                        );
+                    }
+                    followerMintedCount++;
+                    followerMint[msg.sender] = true;
+                }
+            }
+            require(_tokenIds.length > 0, "Amount cannot be zero");
+
+            if (isOwnerLimit) {
+                require(
+                    (totalMinted + _tokenIds.length) < nonOwnerLimit,
+                    "All non-owner tokens are minted"
+                );
+            }
             require(
                 (userMinted[msg.sender] + _tokenIds.length) <= 10,
                 "Maximum 10 NFT per wallet"
