@@ -245,7 +245,7 @@ describe("Gen3.0 NFT Project", function () {
         nft.connect(nonWL[0]).mint([400], [proof], {
           value: hre.ethers.utils.parseEther("1.0"),
         })
-      ).to.be.revertedWith("Only 400 tokens can be minted by users");
+      ).to.be.revertedWith("All non-owner tokens are minted");
     });
 
     it("Should fail if all follower NFTs are already sold", async function () {
@@ -1006,47 +1006,168 @@ describe("Gen3.0 NFT Project", function () {
         ethers.utils.parseEther("44.4")
       );
     });
+
+    it("admin withdraw remaining ether (previously claimed rewards by NFT owners)", async function () {
+      const {
+        nft,
+        memberWL,
+        followerWL,
+        nonWL,
+        price,
+        owner,
+        royaltyAmount,
+        treeFollowers,
+        treeMembers,
+        padBuffer,
+      } = await loadFixture(deployGen30NFT);
+
+      await nft.setMintable();
+      console.log("NFTs are now mintable!");
+
+      await nft.setPreSale();
+      console.log("Public sale is enabled now!");
+      const proof = ethers.utils.hexZeroPad("0x00", 32);
+      await nft
+        .connect(nonWL[0])
+        .mint([0, 1, 2, 3, 4, 5, 6, 7, 8, 9], [proof], {
+          value: hre.ethers.utils.parseEther("10.0"),
+        });
+      for (let i = 10; i < 444; i++) {
+        await nft.mint([i], [proof], {
+          value: hre.ethers.utils.parseEther("1.0"),
+        });
+      }
+      await nft.setClaimable();
+      console.log("Enabled claims");
+
+      await expect(nft.connect(nonWL[0]).claimShare()).to.changeEtherBalance(
+        nonWL[0],
+        ethers.utils.parseEther("1.0")
+      );
+      await network.provider.send("evm_setNextBlockTimestamp", [1690635824]);
+      await expect(nft.withdrawAll()).to.changeEtherBalance(
+        owner,
+        ethers.utils.parseEther("43.4")
+      );
+    });
   });
 
-  it("admin withdraw remaining ether (previously claimed rewards by NFT owners)", async function () {
-    const {
-      nft,
-      memberWL,
-      followerWL,
-      nonWL,
-      price,
-      owner,
-      royaltyAmount,
-      treeFollowers,
-      treeMembers,
-      padBuffer,
-    } = await loadFixture(deployGen30NFT);
+  describe("Setters", function () {});
+  describe("Getters", function () {
+    it("should return true if whitelisted", async function () {
+      const {
+        nft,
+        memberWL,
+        followerWL,
+        nonWL,
+        price,
+        owner,
+        royaltyAmount,
+        treeFollowers,
+        treeMembers,
+        padBuffer,
+      } = await loadFixture(deployGen30NFT);
 
-    await nft.setMintable();
-    console.log("NFTs are now mintable!");
+      const merkleProofFollower = treeFollowers.getHexProof(
+        padBuffer(followerWL[0].address)
+      );
 
-    await nft.setPreSale();
-    console.log("Public sale is enabled now!");
-    const proof = ethers.utils.hexZeroPad("0x00", 32);
-    await nft.connect(nonWL[0]).mint([0, 1, 2, 3, 4, 5, 6, 7, 8, 9], [proof], {
-      value: hre.ethers.utils.parseEther("10.0"),
+      const merkleProofMember = treeMembers.getHexProof(
+        padBuffer(memberWL[0].address)
+      );
+
+      const merkleProofNonWL = treeFollowers.getHexProof(
+        padBuffer(nonWL[0].address)
+      );
+
+      expect(
+        await nft.isWhitelisted(followerWL[0].address, merkleProofFollower)
+      ).to.equal(2);
+      expect(
+        await nft.isWhitelisted(memberWL[0].address, merkleProofMember)
+      ).to.equal(1);
+      expect(
+        await nft.isWhitelisted(nonWL[0].address, merkleProofNonWL)
+      ).to.equal(0);
     });
-    for (let i = 10; i < 444; i++) {
-      await nft.mint([i], [proof], {
-        value: hre.ethers.utils.parseEther("1.0"),
-      });
-    }
-    await nft.setClaimable();
-    console.log("Enabled claims");
 
-    await expect(nft.connect(nonWL[0]).claimShare()).to.changeEtherBalance(
-      nonWL[0],
-      ethers.utils.parseEther("1.0")
-    );
-    await network.provider.send("evm_setNextBlockTimestamp", [1690635824]);
-    await expect(nft.withdrawAll()).to.changeEtherBalance(
-      owner,
-      ethers.utils.parseEther("43.4")
-    );
+    it("should get BaseURI of an existing token", async function () {
+      const {
+        nft,
+        memberWL,
+        followerWL,
+        nonWL,
+        price,
+        owner,
+        royaltyAmount,
+        treeFollowers,
+        treeMembers,
+        padBuffer,
+      } = await loadFixture(deployGen30NFT);
+
+      await nft.setMintable();
+      console.log("NFTs are now mintable!");
+
+      await nft.setPreSale();
+      console.log("Public sale is enabled now!");
+      const proof = ethers.utils.hexZeroPad("0x00", 32);
+      await nft
+        .connect(nonWL[0])
+        .mint([0, 1, 2, 3, 4, 5, 6, 7, 8, 9], [proof], {
+          value: hre.ethers.utils.parseEther("10.0"),
+        });
+
+      expect(await nft.tokenURI(1)).to.equal("ipfs://CID/1.json");
+    });
+
+    it("should fail while getting BaseURI of an non-existing token", async function () {
+      const {
+        nft,
+        memberWL,
+        followerWL,
+        nonWL,
+        price,
+        owner,
+        royaltyAmount,
+        treeFollowers,
+        treeMembers,
+        padBuffer,
+      } = await loadFixture(deployGen30NFT);
+
+      await expect(nft.tokenURI(100)).to.be.revertedWith(
+        "URI query for nonexistent token"
+      );
+    });
+
+    it("should return unsold tokens", async () => {
+      it("should return true if whitelisted", async function () {
+        const {
+          nft,
+          memberWL,
+          followerWL,
+          nonWL,
+          price,
+          owner,
+          royaltyAmount,
+          treeFollowers,
+          treeMembers,
+          padBuffer,
+        } = await loadFixture(deployGen30NFT);
+
+        await nft.setMintable();
+        console.log("NFTs are now mintable!");
+
+        await nft.setPreSale();
+        console.log("Public sale is enabled now!");
+        const proof = ethers.utils.hexZeroPad("0x00", 32);
+        await nft
+          .connect(nonWL[0])
+          .mint([0], [proof], { value: hre.ethers.utils.parseEther("1.0") });
+
+        const unsold = new Array(443 - 1).fill().map((d, i) => i + 1);
+
+        expect(await nft.unSoldTokens()).to.equal(unsold);
+      });
+    });
   });
 });
