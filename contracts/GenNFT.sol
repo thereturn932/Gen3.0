@@ -81,11 +81,11 @@ contract Gen30 is
         price = _price;
     }
 
-    function setRootFollower(bytes1 _rootFollower) external onlyOwner {
+    function setRootFollower(bytes32 _rootFollower) external onlyOwner {
         rootFollowers = _rootFollower;
     }
 
-    function setRootMembers(bytes1 _rootMembers) external onlyOwner {
+    function setRootMembers(bytes32 _rootMembers) external onlyOwner {
         rootMembers = _rootMembers;
     }
 
@@ -292,7 +292,10 @@ contract Gen30 is
         }
     }
 
-    function _setRoyalties(address recipient, uint256 value) internal {
+    function _setRoyalties(address recipient, uint256 value)
+        external
+        onlyOwner
+    {
         require(value <= 10000, "Royalty Too high");
         _royaltyAmount = uint24(value);
         royaltyOwner = recipient;
