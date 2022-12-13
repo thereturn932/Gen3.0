@@ -7,13 +7,11 @@ import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 
-import "hardhat/console.sol";
-
 interface IERC2981Royalties {
-    function royaltyInfo(uint256 _tokenId, uint256 _value)
-        external
-        view
-        returns (address _receiver, uint256 _royaltyAmount);
+    function royaltyInfo(
+        uint256 _tokenId,
+        uint256 _value
+    ) external view returns (address _receiver, uint256 _royaltyAmount);
 }
 
 contract Gen30 is
@@ -59,7 +57,7 @@ contract Gen30 is
     mapping(uint => bool) isClaimed;
 
     uint maxSupply = 444;
-    uint ownerCanClaimAll = 2**256 - 1;
+    uint ownerCanClaimAll = 2 ** 256 - 1;
 
     constructor(
         string memory baseTokenURI,
@@ -89,26 +87,26 @@ contract Gen30 is
         rootMembers = _rootMembers;
     }
 
-    function setMemberLimit(bool _isOwnerLimit, uint _memberLimit)
-        external
-        onlyOwner
-    {
+    function setMemberLimit(
+        bool _isOwnerLimit,
+        uint _memberLimit
+    ) external onlyOwner {
         isMemberLimit = _isOwnerLimit;
         memberLimit = _memberLimit;
     }
 
-    function setOwnerLimit(bool _isOwnerLimit, uint _nonOwnerLimit)
-        external
-        onlyOwner
-    {
+    function setOwnerLimit(
+        bool _isOwnerLimit,
+        uint _nonOwnerLimit
+    ) external onlyOwner {
         isOwnerLimit = _isOwnerLimit;
         nonOwnerLimit = _nonOwnerLimit;
     }
 
-    function setFollowLimit(bool _isFollowerLimit, uint _followerLimit)
-        external
-        onlyOwner
-    {
+    function setFollowLimit(
+        bool _isFollowerLimit,
+        uint _followerLimit
+    ) external onlyOwner {
         isFollowerLimit = _isFollowerLimit;
         followerLimit = _followerLimit;
     }
@@ -125,10 +123,10 @@ contract Gen30 is
         mintable = !mintable;
     }
 
-    function mint(uint256[] calldata _tokenIds, bytes32[] calldata _merkleProof)
-        external
-        payable
-    {
+    function mint(
+        uint256[] calldata _tokenIds,
+        bytes32[] calldata _merkleProof
+    ) external payable {
         if (msg.sender != owner()) {
             require(mintable, "Mint hasn't started yet");
             if (inPreSale) {
@@ -249,37 +247,27 @@ contract Gen30 is
             }
         }
         uint balance = unClaimed * revenuePerToken;
-        console.log("Balance is", balance);
-        console.log("Contract balance is", address(this).balance);
         require(balance > 0, "You have zero balance");
         (bool success, ) = msg.sender.call{value: balance}("");
         require(success, "Transfer failed.");
     }
 
-    function _exists(uint tokenId)
-        internal
-        view
-        virtual
-        override(ERC721)
-        returns (bool)
-    {
+    function _exists(
+        uint tokenId
+    ) internal view virtual override(ERC721) returns (bool) {
         return ERC721._exists(tokenId);
     }
 
-    function _burn(uint256 tokenId)
-        internal
-        virtual
-        override(ERC721, ERC721URIStorage)
-    {
+    function _burn(
+        uint256 tokenId
+    ) internal virtual override(ERC721, ERC721URIStorage) {
         return ERC721URIStorage._burn(tokenId);
     }
 
-    function royaltyInfo(uint256, uint256 value)
-        external
-        view
-        override
-        returns (address receiver, uint256 royaltyAmount)
-    {
+    function royaltyInfo(
+        uint256,
+        uint256 value
+    ) external view override returns (address receiver, uint256 royaltyAmount) {
         receiver = royaltyOwner;
         royaltyAmount = (value * _royaltyAmount) / 10000;
     }
@@ -292,10 +280,10 @@ contract Gen30 is
         }
     }
 
-    function _setRoyalties(address recipient, uint256 value)
-        external
-        onlyOwner
-    {
+    function _setRoyalties(
+        address recipient,
+        uint256 value
+    ) external onlyOwner {
         require(value <= 10000, "Royalty Too high");
         _royaltyAmount = uint24(value);
         royaltyOwner = recipient;
@@ -331,11 +319,10 @@ contract Gen30 is
         }
     }
 
-    function isWhitelisted(address _user, bytes32[] calldata _merkleProof)
-        external
-        view
-        returns (uint8 result)
-    {
+    function isWhitelisted(
+        address _user,
+        bytes32[] calldata _merkleProof
+    ) external view returns (uint8 result) {
         bytes32 leaf = bytes32(uint256(uint160(_user)));
         if (MerkleProof.verify(_merkleProof, rootMembers, leaf)) {
             result = 1;
@@ -345,9 +332,6 @@ contract Gen30 is
     }
 
     function withdrawAll() external onlyOwner {
-        console.log("current", block.timestamp);
-        console.log("required", ownerCanClaimAll);
-
         require(
             block.timestamp >= ownerCanClaimAll,
             "Balances are not claimable yet!"
@@ -366,24 +350,17 @@ contract Gen30 is
         super._beforeTokenTransfer(from, to, tokenId);
     }
 
-    function supportsInterface(bytes4 interfaceId)
-        public
-        view
-        virtual
-        override(ERC721, ERC721Enumerable)
-        returns (bool)
-    {
+    function supportsInterface(
+        bytes4 interfaceId
+    ) public view virtual override(ERC721, ERC721Enumerable) returns (bool) {
         return
             interfaceId == type(IERC2981Royalties).interfaceId ||
             super.supportsInterface(interfaceId);
     }
 
-    function tokenURI(uint256 tokenId)
-        public
-        view
-        override(ERC721, ERC721URIStorage)
-        returns (string memory)
-    {
+    function tokenURI(
+        uint256 tokenId
+    ) public view override(ERC721, ERC721URIStorage) returns (string memory) {
         require(_exists(tokenId), "URI query for nonexistent token");
         return
             string(abi.encodePacked(_baseURI(), tokenId.toString(), ".json"));
