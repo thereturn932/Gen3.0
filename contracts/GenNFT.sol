@@ -7,6 +7,8 @@ import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 
+import "./IMembershipToken.sol";
+
 interface IERC2981Royalties {
     function royaltyInfo(
         uint256 _tokenId,
@@ -50,8 +52,6 @@ contract Gen30 is
     bool public mintable; // false
     bool public inPreSale = true;
     bool public claimable; // false
-    uint public totalRevenue;
-    uint public revenuePerToken;
 
     mapping(uint => bool) isSold;
     mapping(uint => bool) isClaimed;
@@ -59,13 +59,16 @@ contract Gen30 is
     uint maxSupply = 444;
     uint ownerCanClaimAll = 2 ** 256 - 1;
 
+    IMVPMembershipToken membershipToken;
+
     constructor(
         string memory baseTokenURI,
         uint256 _price,
         bytes32 _rootMembers,
         bytes32 _rootFollowers,
         address _royaltyRecipient,
-        uint24 __royaltyAmount // 1000 is 10% 500 is 5%
+        uint24 __royaltyAmount, // 1000 is 10% 500 is 5%
+        address _membershipTokenAddress
     ) ERC721("Gen3.0", "GEN3") {
         rootMembers = _rootMembers;
         rootFollowers = _rootFollowers;
@@ -73,6 +76,7 @@ contract Gen30 is
         price = _price;
         royaltyOwner = _royaltyRecipient;
         _royaltyAmount = __royaltyAmount;
+        membershipToken = IMVPMembershipToken(_membershipTokenAddress);
     }
 
     function setPrice(uint256 _price) external onlyOwner {
@@ -111,6 +115,12 @@ contract Gen30 is
         followerLimit = _followerLimit;
     }
 
+    function setMembershipToken(
+        address _membershipTokenAddress
+    ) external onlyOwner {
+        membershipToken = IMVPMembershipToken(_membershipTokenAddress);
+    }
+
     function _baseURI() internal view virtual override returns (string memory) {
         return _baseTokenURI;
     }
@@ -124,25 +134,13 @@ contract Gen30 is
     }
 
     function mint(
-        uint256[] calldata _tokenIds,
+        uint256 _tokenId,
         bytes32[] calldata _merkleProof
     ) external payable {
         if (msg.sender != owner()) {
             require(mintable, "Mint hasn't started yet");
             if (inPreSale) {
                 bytes32 leaf = bytes32(uint256(uint160(msg.sender)));
-                require(
-                    _tokenIds.length == 1,
-                    "Only 1 NFT can be minted during presale"
-                );
-                // console.log(
-                //     "Is member",
-                //     MerkleProof.verify(_merkleProof, rootMembers, leaf)
-                // );
-                // console.log(
-                //     "Is follower",
-                //     MerkleProof.verify(_merkleProof, rootFollowers, leaf)
-                // );
                 require(
                     MerkleProof.verify(_merkleProof, rootMembers, leaf) ||
                         MerkleProof.verify(_merkleProof, rootFollowers, leaf),
@@ -179,77 +177,31 @@ contract Gen30 is
                     followerMint[msg.sender] = true;
                 }
             }
-            require(_tokenIds.length > 0, "Amount cannot be zero");
 
             if (isOwnerLimit) {
                 require(
-                    (totalMinted + _tokenIds.length) < nonOwnerLimit,
+                    totalMinted < nonOwnerLimit,
                     "All non-owner tokens are minted"
                 );
             }
-            require(
-                (userMinted[msg.sender] + _tokenIds.length) <= 10,
-                "Maximum 10 NFT per wallet"
-            );
-            require(
-                msg.value == price * _tokenIds.length,
-                "Wrong amount of Ethers"
-            );
+            require(userMinted[msg.sender] < 10, "Maximum 10 NFT per wallet");
+            require(msg.value == price, "Wrong amount of Ethers");
         }
 
-        for (uint256 i; i < _tokenIds.length; i++) {
-            require(_tokenIds[i] < 444, "ID of token can't be larger than 443");
-            isSold[_tokenIds[i]] = true;
-            _mint(msg.sender, _tokenIds[i]);
-        }
-        userMinted[msg.sender] += _tokenIds.length;
-        totalMinted += _tokenIds.length;
-        totalRevenue += msg.value;
-        (bool success, ) = owner().call{value: ((msg.value * 90) / 100)}("");
-        require(success, "Transfer failed.");
-        // console.log(userMinted[msg.sender]);
-        // console.log("Holds",msg.value == price * _tokenIds.length);
-        // console.log("Value",msg.value);
-        // console.log("MINTED");
+        require(_tokenId < 444, "ID of token can't be larger than 443");
+        isSold[_tokenId] = true;
+        _mint(msg.sender, _tokenId);
+        userMinted[msg.sender]++;
+        totalMinted++;
+        uint ownerPay = ((msg.value * 90) / 100);
+        (bool successOwner, ) = owner().call{value: ownerPay}("");
+        require(successOwner, "Transfer failed. Owner");
+        uint memberPay = msg.value - ownerPay;
+        membershipToken.depositPool{value: memberPay}();
     }
 
     function setPreSale() external onlyOwner {
         inPreSale = !inPreSale;
-    }
-
-    function calculateClaimableShare()
-        external
-        view
-        returns (uint claimableShare)
-    {
-        uint count = balanceOf(msg.sender);
-        require(count > 0);
-        uint unClaimed;
-        for (uint i = 0; i < count; i++) {
-            uint tokenId = tokenOfOwnerByIndex(msg.sender, i);
-            if (!isClaimed[tokenId]) {
-                unClaimed++;
-            }
-        }
-        claimableShare = unClaimed * revenuePerToken;
-    }
-
-    function claimShare() external {
-        require(claimable, "Claims is not enabled yet.");
-        uint count = balanceOf(msg.sender);
-        require(count > 0);
-        uint unClaimed;
-        for (uint i = 0; i < count; i++) {
-            uint tokenId = tokenOfOwnerByIndex(msg.sender, i);
-            if (!isClaimed[tokenId]) {
-                isClaimed[tokenId] = true;
-                unClaimed++;
-            }
-        }
-        uint balance = unClaimed * revenuePerToken;
-        require(balance > 0, "You have zero balance");
-        (bool success, ) = msg.sender.call{value: balance}("");
-        require(success, "Transfer failed.");
     }
 
     function _exists(
@@ -270,14 +222,6 @@ contract Gen30 is
     ) external view override returns (address receiver, uint256 royaltyAmount) {
         receiver = royaltyOwner;
         royaltyAmount = (value * _royaltyAmount) / 10000;
-    }
-
-    function setClaimable() external onlyOwner {
-        claimable = !claimable;
-        if (claimable) {
-            revenuePerToken = ((totalRevenue * 10) / 100) / maxSupply;
-            ownerCanClaimAll = block.timestamp + 30 days;
-        }
     }
 
     function _setRoyalties(
@@ -331,15 +275,6 @@ contract Gen30 is
         }
     }
 
-    function withdrawAll() external onlyOwner {
-        require(
-            block.timestamp >= ownerCanClaimAll,
-            "Balances are not claimable yet!"
-        );
-        (bool success, ) = msg.sender.call{value: address(this).balance}("");
-        require(success, "Transfer failed.");
-    }
-
     // OVERRIDES
 
     function _beforeTokenTransfer(
@@ -348,6 +283,7 @@ contract Gen30 is
         uint256 tokenId
     ) internal virtual override(ERC721, ERC721Enumerable) {
         super._beforeTokenTransfer(from, to, tokenId);
+        membershipToken.updatePool(from, to);
     }
 
     function supportsInterface(

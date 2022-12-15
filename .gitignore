@@ -10,3 +10,5 @@ cache
 artifacts
 
 .vscode
+
+.DS_Store
